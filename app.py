@@ -6,35 +6,28 @@ import matplotlib.pyplot as plt
 from tempfile import TemporaryDirectory
 from pathlib import Path
 import tensorflow as tf # Pour le reseau de neurones simple et pour le CNN
+import pandas as pd
 
-def predire(img_array, chemin_modele):
+def predire(chemin_image, chemin_modele):
+    
+    class_names = ['blues', 'classical', 'country', 'disco', 'hiphop', 'jazz', 'metal', 'pop', 'reggae', 'rock']
+    
     modele = tf.keras.models.load_model(chemin_modele)
-    # image_path = Path(chemin_image)
-    # img = tf.keras.utils.load_img(
-    #     image_path, target_size=(HEIGHT, WIDTH)
-    # )
-    # img_array = tf.keras.utils.img_to_array(img)
+    image_path = Path(chemin_image)
+    img = tf.keras.utils.load_img(
+        image_path, target_size=(HEIGHT, WIDTH)
+    )
+    img_array = tf.keras.utils.img_to_array(img)
+    img_array = tf.expand_dims(img_array, 0) # Create a batch
+    predictions = modele.predict(img_array)
+    score = tf.nn.softmax(predictions[0])
     
-    st.write("Img array shape",img_array.shape)
-    img_array = tf.expand_dims(img_array, 0)
-    
-    # Redimensionner en (128, 660) en utilisant TensorFlow/Keras
-    new_shape = (128, 660)
-    resized_spect = tf.image.resize(img_array, new_shape, method=tf.image.ResizeMethod.BILINEAR)
-    st.write("Resized shape",resized_spect.shape)
-    
-    # Répéter le tableau redimensionné sur trois canaux pour créer une image RGB
-    rgb_spect = np.repeat(resized_spect, 3, axis=-1)
-    st.write("RGB array shape",rgb_spect.shape)
+    st.write(
+      "This image most likely belongs to {} with a {:.2f} percent confidence."
+      .format(class_names[np.argmax(score)], 100 * np.max(score))
+    )
 
-    # predictions = modele.predict(rgb_spect)
-    # score = tf.nn.softmax(predictions[0])
-    # print("score =",100 * np.max(score))
-#   print(
-#       "This image most likely belongs to {} with a {:.2f} percent confidence."
-#       .format(class_names[np.argmax(score)], 100 * np.max(score))
-#   )
-
+    
 def main():
     st.title("Classification de Genres Musicaux")
     
@@ -66,35 +59,30 @@ def main():
                 S = np.abs(librosa.stft(y))
                 spect = librosa.power_to_db(S**2, ref=np.max)
                 
-                # # Slice to have same shapes for all
-                # spect = spect[:1000,:1220]
-
-                # # Compress for the model
-                # new_shape = (100,122)
-                # block_height = spect.shape[0] // new_shape[0]
-                # block_width = spect.shape[1] // new_shape[1]
-                # downsampled_array = spect.reshape(new_shape[0], block_height, new_shape[1], block_width).mean(3).mean(1)
-                # X = np.array([downsampled_array])
-                
-            col1, col2, col3 = st.columns(3)
-        
-            with col1 :
-                st.audio(uploaded_file)
-                
-            with col2:
-                # # Afficher le spectrogramme
-                fig = plt.figure(figsize=(12,2))
-                librosa.display.specshow(spect)
-                # Afficher la figure avec st.pyplot()
-                st.pyplot(fig)
-                
-            with col3:
-                st.write("Résultats")
-                if st.button('Predict'):
-                    # img_path = temp_file_path + uploaded_file.name
-                    model_path = '..\model\modele-v1.h5'
-                    results = predire(spect,model_path)
-                    # st.write(results)
+                 # Sauvegarder le spectrogramme dans un fichier temporaire
+                temp_img_path = Path(temp_dir, "spectrogram.png")
+                plt.imsave(temp_img_path, spect, cmap='inferno')
+                # Vérifier si le fichier temporaire existe
+                if temp_img_path.exists():
+                    img = tf.keras.utils.load_img(
+                        temp_img_path, target_size=(HEIGHT, WIDTH) 
+                    )
+                    col1, col2, col3 = st.columns(3)
+                    with col1 :
+                        st.audio(uploaded_file)
+                    with col2:
+                        # Afficher le spectrogramme
+                        fig = plt.figure(figsize=(12,2))
+                        librosa.display.specshow(spect)
+                        # Afficher la figure avec st.pyplot()
+                        st.pyplot(fig)
+                    with col3:
+                        st.write("Résultats")
+                        if st.button('Predict'):
+                            # img_path = temp_file_path + uploaded_file.name
+                            model_path = '..\model\modele-v1.h5'
+                            results = predire(temp_img_path,model_path)
+                            st.write(results)
 
 # Load modèle 
 # Saved_img.resize(128, 660)
