@@ -34,7 +34,7 @@ jobs:
           tags: index.docker.io/${{ secrets.AzureAppService_ContainerUsername_42611c7af6c94306a52e49e0dc536bc0 }}/maillotcedric/music-genre-classifier:${{ github.sha }}
           file: ./Dockerfile
 
-    deploy:
+  deploy:
       runs-on: ubuntu-latest
       needs: build
       environment:
