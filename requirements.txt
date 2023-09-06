@@ -81,7 +81,7 @@ pyparsing==3.0.9
 python-dateutil==2.8.2
 pytz==2023.3
 pytz-deprecation-shim==0.1.0.post0
-pywin32==306
+# pywin32==306
 pyzmq==25.1.0
 referencing==0.30.2
 requests==2.31.0
@@ -101,10 +101,10 @@ streamlit==1.25.0
 tenacity==8.2.2
 tensorboard==2.13.0
 tensorboard-data-server==0.7.1
-tensorflow==2.13.0
-tensorflow-estimator==2.13.0
-tensorflow-intel==2.13.0
-tensorflow-io-gcs-filesystem==0.31.0
+# tensorflow==2.13.0
+# tensorflow-estimator==2.13.0
+# tensorflow-intel==2.13.0
+# tensorflow-io-gcs-filesystem==0.31.0
 termcolor==2.3.0
 threadpoolctl==3.2.0
 toml==0.10.2
