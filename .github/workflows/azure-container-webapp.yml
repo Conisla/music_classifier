@@ -31,7 +31,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: index.docker.io/${{ secrets.AzureAppService_ContainerUsername_42611c7af6c94306a52e49e0dc536bc0 }}/maillotcedric/music-genre-classifier:${{ github.sha }}
+          tags: maillotcedric/music-genre-classifier:${{ github.sha }}
           file: ./Dockerfile
 
   deploy:
@@ -49,4 +49,4 @@ jobs:
             app-name: 'BadBoyClassifier'
             slot-name: 'production'
             publish-profile: ${{ secrets.AzureAppService_PublishProfile_d661213be28245f0ade04a1890982373 }}
-            images: 'index.docker.io/${{ secrets.AzureAppService_ContainerUsername_42611c7af6c94306a52e49e0dc536bc0 }}/maillotcedric/music-genre-classifier:${{ github.sha }}'
+            images: 'maillotcedric/music-genre-classifier:${{ github.sha }}'
