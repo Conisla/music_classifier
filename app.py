@@ -1,95 +1,115 @@
 import streamlit as st
-import librosa as librosa
+import sqlite3
+import librosa
 import librosa.display
-import numpy as np
+from io import BytesIO
 import matplotlib.pyplot as plt
-from tempfile import TemporaryDirectory
-from pathlib import Path
-import tensorflow as tf # Pour le reseau de neurones simple et pour le CNN
-import pandas as pd
+import numpy as np
+import tensorflow as tf
 
-def predire(chemin_image, chemin_modele):
-    
-    class_names = ['blues', 'classical', 'country', 'disco', 'hiphop', 'jazz', 'metal', 'pop', 'reggae', 'rock']
-    
-    modele = tf.keras.models.load_model(chemin_modele)
-    image_path = Path(chemin_image)
-    img = tf.keras.utils.load_img(
-        image_path, target_size=(HEIGHT, WIDTH)
-    )
-    img_array = tf.keras.utils.img_to_array(img)
-    img_array = tf.expand_dims(img_array, 0) # Create a batch
-    predictions = modele.predict(img_array)
-    score = tf.nn.softmax(predictions[0])
-    
-    st.write(
-      "This image most likely belongs to {} with a {:.2f} percent confidence."
-      .format(class_names[np.argmax(score)], 100 * np.max(score))
-    )
+def register_new_data(data, uploaded_file_name):
+    # Connexion à la base de données SQLite (créez-la si elle n'existe pas)
+    conn = sqlite3.connect("audio_db.db")
+    cursor = conn.cursor()
 
+    # Créer une table pour stocker les données audio
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS audio_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT,
+            audio_data BLOB,
+            predicted_genre TEXT DEFAULT NULL,
+            score REAL DEFAULT NULL,
+            feedback TEXT DEFAULT NULL
+        )
+    ''')
+
+    # Insérez le fichier audio dans la base de données
+    cursor.execute(
+      "INSERT INTO audio_files (filename,audio_data) VALUES (?,?)",
+      (uploaded_file_name, sqlite3.Binary(data),)
+    )
+    conn.commit()
+
+    # Fermez la connexion à la base de données
+    conn.close() 
+
+def get_audiodata_from_db():
+    # Connexion à la base de données SQLite
+    conn = sqlite3.connect("audio_db.db")
+    cursor = conn.cursor()
+
+    # Sélectionnez la dernière ligne de la table en triant par l'ID (ou une autre colonne chronologique)
+    cursor.execute("SELECT * FROM audio_files ORDER BY ID DESC LIMIT 1")
+
+    audio_data = cursor.fetchone()
+    # Fermez la connexion à la base de données
+    conn.close()
     
+    return audio_data
+
+def format_element(element):
+  return "%.2f" % (100 * element)
+
+def get_resized_spectrogram(audio_data, spectrogram_height):
+  y, sr = librosa.load(BytesIO(bytes(audio_data)))
+  # power_spectrogram = lb.feature.melspectrogram(y=y, sr=sr, n_mels=128, fmax=8000) # amplitude squared
+  power_spectrogram = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=2048, hop_length=1024) # amplitude squared
+  db_spectrogram = librosa.power_to_db(power_spectrogram, ref=np.max) # decibel units
+  if db_spectrogram.shape[1] != spectrogram_height:
+      db_spectrogram.resize(128, spectrogram_height, refcheck=False)
+
+  return db_spectrogram
+
+def predict(id_audio,audio_data, model_path, genres):
+  model = tf.keras.models.load_model(model_path)
+  spectrogram = get_resized_spectrogram(audio_data, 660)
+  np_spect_array = np.array(spectrogram)
+  np_spect_array /= np.min(np_spect_array)
+  np_spect_array = tf.expand_dims(np_spect_array, 0) # Create a batch
+  predictions = model.predict(np_spect_array)
+  score = tf.nn.softmax(predictions[0])
+  #formatted_score = list(map(format_element, score))
+  
+  predicted_genre = genres[np.argmax(score)]
+  max_score = 100 * np.max(score)
+
+  # Update the row with predicted_genre and score
+  conn = sqlite3.connect("audio_db.db")
+  cursor = conn.cursor()
+  cursor.execute("UPDATE audio_files SET predicted_genre=?, score=? WHERE ID=?", (predicted_genre, max_score, id_audio))
+  conn.commit()
+  conn.close()
+  
+  message = "This song is most likely a  {}  song with a {:.2f} percent confidence.".format(predicted_genre, max_score)
+
+  return message, genres[np.argmax(score)], np.max(score)
+
 def main():
-    st.title("Classification de Genres Musicaux")
-    
-    global HEIGHT 
-    global WIDTH
-    
-    HEIGHT = 128
-    WIDTH = 660
+    # Créez une interface Streamlit
+    st.title("Enregistrement d'un fichier audio dans une base de données SQLite")
 
-    uploaded_files = st.file_uploader(
-        "Téléchargez un fichier audio au format WAV",
-        type=["wav"],
-        accept_multiple_files=True
-    )
-    
-    if uploaded_files is not None:
+    # Ajoutez un bouton pour télécharger le fichier audio
+    uploaded_file = st.file_uploader("Téléchargez un fichier audio au format MP3, WAV, etc.", type=["mp3", "wav"])
+
+    # Vérifiez si un fichier a été téléchargé
+    if uploaded_file is not None and st.button('Register into db'):
+        # Lisez le contenu du fichier audio
+        audio_data = uploaded_file.read()
+        register_new_data(audio_data,uploaded_file.name)
+        # Affichez un message de confirmation
+        st.success("Fichier audio sauvegardé avec succès dans la base de données SQLite.")
         
-        for uploaded_file in uploaded_files:
-            
-            st.write("Nom du fichier:", uploaded_file.name)
-            
-            with TemporaryDirectory() as temp_dir:
-                temp_file_path = Path(temp_dir, uploaded_file.name)
-                temp_file_path.write_bytes(uploaded_file.read())
-                
-                y, sr = librosa.load(temp_file_path, sr=None)
-                
-                # Generate log power spectrogram
-                S = np.abs(librosa.stft(y))
-                spect = librosa.power_to_db(S**2, ref=np.max)
-                
-                 # Sauvegarder le spectrogramme dans un fichier temporaire
-                temp_img_path = Path(temp_dir, "spectrogram.png")
-                plt.imsave(temp_img_path, spect, cmap='inferno')
-                # Vérifier si le fichier temporaire existe
-                if temp_img_path.exists():
-                    img = tf.keras.utils.load_img(
-                        temp_img_path, target_size=(HEIGHT, WIDTH) 
-                    )
-                    col1, col2, col3 = st.columns(3)
-                    with col1 :
-                        st.audio(uploaded_file)
-                    with col2:
-                        # Afficher le spectrogramme
-                        fig = plt.figure(figsize=(12,2))
-                        librosa.display.specshow(spect)
-                        # Afficher la figure avec st.pyplot()
-                        st.pyplot(fig)
-                    with col3:
-                        st.write("Résultats")
-                        if st.button('Predict'):
-                            # img_path = temp_file_path + uploaded_file.name
-                            model_path = '..\model\modele-v1.h5'
-                            results = predire(temp_img_path,model_path)
-                            st.write(results)
-
-# Load modèle 
-# Saved_img.resize(128, 660)
-# Predict() for each Saved_img
-# Display predicted class name + confidence rate
+    st.write('---')
+    
+    if  uploaded_file is not None and st.button("Predict"):
+        audio_db = get_audiodata_from_db()
+        st.write("filename =",audio_db[1])
+        class_names = ['blues', 'classical', 'country', 'disco', 'hiphop', 'jazz', 'metal', 'pop', 'reggae', 'rock']
+        st.write("Genre musicale de l'audio")
+        model_path = '.\\model\\best_model_2.h5'
+        resultats = predict(audio_db[0],audio_db[2],model_path,class_names)
+        st.write(resultats[0])
 
 if __name__ == "__main__":
-    st.set_page_config(layout="wide", page_title="Audio Classifier")
-    print('>=========Page Loaded==========<')
     main()
